@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -26,6 +27,7 @@ public class MainActivity extends Activity {
     private TextView logView;
     private ScrollView scrollView;
     private Button btn;
+    private EditText etApiKey, etBaseUrl, etModel;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
 
@@ -52,10 +54,44 @@ public class MainActivity extends Activity {
         sub.setTextColor(Color.DKGRAY);
         root.addView(sub);
 
+        TextView cfgTitle = new TextView(this);
+        cfgTitle.setText("模型与中转站配置（保存到 Termux ~/.dsh-env）");
+        cfgTitle.setTextSize(15);
+        cfgTitle.setTypeface(null, Typeface.BOLD);
+        cfgTitle.setTextColor(Color.parseColor("#0B5FFF"));
+        LinearLayout.LayoutParams cfgLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        cfgLp.topMargin = dp;
+        root.addView(cfgTitle, cfgLp);
+
+        etApiKey = makeField(root, "API Key", "sk-...");
+        etBaseUrl = makeField(root, "中转站 Base URL（可留空用官方）",
+                "https://api.deepseek.com/v1");
+        etModel = makeField(root, "模型名（可留空用默认）", "deepseek-v4-flash");
+
+        LinearLayout cfgRow = new LinearLayout(this);
+        cfgRow.setOrientation(LinearLayout.HORIZONTAL);
+        cfgRow.setGravity(Gravity.CENTER_VERTICAL);
+        Button saveCfg = new Button(this);
+        saveCfg.setText("保存配置");
+        saveCfg.setTextSize(15);
+        cfgRow.addView(saveCfg);
+        Button loadCfg = new Button(this);
+        loadCfg.setText("读取当前配置");
+        loadCfg.setTextSize(15);
+        cfgRow.addView(loadCfg);
+        LinearLayout.LayoutParams cfgRowLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        cfgRowLp.topMargin = dp;
+        root.addView(cfgRow, cfgRowLp);
+
         btn = new Button(this);
         btn.setText("开始安装");
         btn.setTextSize(18);
-        root.addView(btn);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        btnLp.topMargin = dp;
+        root.addView(btn, btnLp);
 
         logView = new TextView(this);
         logView.setTextSize(11);
@@ -73,6 +109,19 @@ public class MainActivity extends Activity {
         root.addView(scrollView, lp);
 
         setContentView(root);
+
+        saveCfg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+            }
+        });
+        loadCfg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                loadConfig();
+            }
+        });
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -81,6 +130,30 @@ public class MainActivity extends Activity {
                 start();
             }
         });
+    }
+
+    private EditText makeField(LinearLayout parent, String label, String hint) {
+        TextView tv = new TextView(this);
+        tv.setText(label);
+        tv.setTextSize(13);
+        tv.setTextColor(Color.DKGRAY);
+        tv.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tvLp.topMargin = (int) (8 * getResources().getDisplayMetrics().density);
+        parent.addView(tv, tvLp);
+
+        EditText et = new EditText(this);
+        et.setHint(hint);
+        et.setTextSize(14);
+        et.setSingleLine(false);
+        et.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+        et.setTextColor(Color.parseColor("#101418"));
+        LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        etLp.topMargin = (int) (2 * getResources().getDisplayMetrics().density);
+        parent.addView(et, etLp);
+        return et;
     }
 
     private void log(final String s) {
@@ -96,6 +169,110 @@ public class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private String cfgFilePath() {
+        return "/data/data/com.termux/files/home/.dsh-env";
+    }
+
+    private void saveConfig() {
+        final String apiKey = etApiKey.getText().toString().trim();
+        final String baseUrl = etBaseUrl.getText().toString().trim();
+        final String model = etModel.getText().toString().trim();
+        exec.execute(new Runnable() {
+            @Override
+            public void run() {
+                if (!hasRoot()) {
+                    log("错误：未获得 root 权限，无法写 Termux 配置");
+                    return;
+                }
+                StringBuilder sb = new StringBuilder();
+                sb.append("# dsh config (written by DSH Installer)\n");
+                if (!apiKey.isEmpty()) {
+                    sb.append("export DEEPSEEK_API_KEY=").append(apiKey).append("\n");
+                }
+                if (!baseUrl.isEmpty()) {
+                    sb.append("export DEEPSEEK_BASE_URL=").append(baseUrl).append("\n");
+                }
+                if (!model.isEmpty()) {
+                    sb.append("export DSH_MODEL=").append(model).append("\n");
+                }
+                String content = sb.toString();
+                try {
+                    File tmp = new File(getFilesDir(), "dsh-env.tmp");
+                    FileOutputStream out = new FileOutputStream(tmp);
+                    out.write(content.getBytes("UTF-8"));
+                    out.close();
+                    String uid = termuxUid();
+                    if (uid == null) {
+                        log("错误：无法确定 Termux 用户 id");
+                        return;
+                    }
+                    sh("cp '" + tmp.getAbsolutePath() + "' " + cfgFilePath());
+                    sh("chown " + uid + ":" + uid + " " + cfgFilePath());
+                    sh("chmod 600 " + cfgFilePath());
+                    sh("su " + uid + " -c 'proot-distro login debian -- bash -c \"cp /data/data/com.termux/files/home/.dsh-env /root/.dsh-env 2>/dev/null || true\"'");
+                    log("[OK] 配置已保存到 " + cfgFilePath());
+                } catch (Exception e) {
+                    log("保存失败: " + e);
+                }
+            }
+        });
+    }
+
+    private void loadConfig() {
+        exec.execute(new Runnable() {
+            @Override
+            public void run() {
+                String content = cat(cfgFilePath());
+                if (content == null || content.trim().isEmpty()) {
+                    log("未读取到配置（文件不存在或为空）");
+                    return;
+                }
+                String key = extract(content, "DEEPSEEK_API_KEY");
+                String base = extract(content, "DEEPSEEK_BASE_URL");
+                String model = extract(content, "DSH_MODEL");
+                final String fKey = key, fBase = base, fModel = model;
+                ui.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        etApiKey.setText(fKey);
+                        etBaseUrl.setText(fBase);
+                        etModel.setText(fModel);
+                    }
+                });
+                log("[OK] 已读取现有配置");
+            }
+        });
+    }
+
+    private String extract(String content, String var) {
+        for (String line : content.split("\n")) {
+            line = line.trim();
+            if (line.startsWith("export " + var + "=")) {
+                return line.substring(("export " + var + "=").length());
+            }
+            if (line.startsWith(var + "=")) {
+                return line.substring((var + "=").length());
+            }
+        }
+        return "";
+    }
+
+    private String cat(String path) {
+        try {
+            Process p = new ProcessBuilder("su", "-c", "cat '" + path + "'").start();
+            BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+            p.waitFor();
+            return sb.toString();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void start() {

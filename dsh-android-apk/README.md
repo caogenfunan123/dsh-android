@@ -32,18 +32,31 @@ DSH-Installer-v1.0.apk
 ## 使用方法
 
 1. 安装 `DSH-Installer-v1.0.apk`（需允许"未知来源"）
-2. 打开 **DSH Installer** 应用，点 **开始安装**
-3. 等待安装完成（Debian/Node/dsh 下载约 5-15 分钟，视网速）
-4. 打开 Termux，配置 API Key：
-   ```bash
-   nano ~/.dsh-env
-   # 把 sk-在此填写你的DeepSeek-API-Key 换成真实 Key
-   ```
+2. 打开 **DSH Installer** 应用
+3. **（推荐）先在应用内填写模型配置**：API Key、中转站 Base URL（留空用官方 `https://api.deepseek.com/v1`）、模型名（留空用 `deepseek-v4-flash`），点 **保存配置**。配置会写入 Termux 的 `~/.dsh-env` 并同步到 Debian 侧
+4. 点 **开始安装**，等待安装完成（Debian/Node/dsh 下载约 5-15 分钟，视网速）
 5. 启动工作台：
    ```bash
    bash ~/start-dsh.sh
    ```
 6. 手机浏览器访问 `http://127.0.0.1:3080`，或局域网访问 `http://<手机IP>:3080`
+7. 后续改模型/中转站：直接在 DSH Installer 里改配置点保存，无需重装
+
+> 安装完成后再改配置也行：应用内"保存配置"覆盖 `~/.dsh-env`，或手动 `nano ~/.dsh-env`（支持 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DSH_MODEL` 三个变量）。
+
+### 配置变量说明
+
+| 变量 | 作用 | 默认值 |
+|------|------|--------|
+| `DEEPSEEK_API_KEY` | API Key（官方或中转站） | 必填 |
+| `DEEPSEEK_BASE_URL` | 中转站地址，如 `https://your-relay/v1` | `https://api.deepseek.com/v1` |
+| `DSH_MODEL` | 模型名，如 `deepseek-v4-flash` | `deepseek-v4-flash` |
+
+### 命令行单次任务
+
+```bash
+bash ~/dsh-run.sh "帮我写一个快速排序"
+```
 
 ## 约束说明
 

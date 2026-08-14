@@ -32,19 +32,34 @@ step "5/6 安装 DeepSeek Harness (dsh)"
 proot-distro login debian -- npm install -g @deepseek-ai/dsh
 
 step "6/6 生成启动脚本与 Key 占位文件"
+if [ ! -f "$HOME/.dsh-env" ]; then
 cat > "$HOME/.dsh-env" << 'EOF'
 export DEEPSEEK_API_KEY=sk-在此填写你的DeepSeek-API-Key
+# 中转站可取消注释并修改：
+# export DEEPSEEK_BASE_URL=https://你的中转站/v1
+# export DSH_MODEL=deepseek-v4-flash
 EOF
+fi
+# 同步一份到 Debian 侧，保证 proot 内 dsh 也能读到
+proot-distro login debian -- bash -c 'cp /data/data/com.termux/files/home/.dsh-env /root/.dsh-env 2>/dev/null || true'
 cat > "$HOME/start-dsh.sh" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-proot-distro login debian -- bash -c 'source ~/.dsh-env && exec dsh web --host 0.0.0.0 --port 3080'
+# 读取 Termux 侧配置，注入 Debian 内的 dsh
+exec proot-distro login debian -- bash -c 'set -a; [ -f "$HOME/.dsh-env" ] && source "$HOME/.dsh-env"; set +a; exec dsh web --host 0.0.0.0 --port 3080'
 EOF
-chmod +x "$HOME/start-dsh.sh"
+cat > "$HOME/dsh-run.sh" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 单次任务：bash dsh-run.sh "你的任务描述"
+TASK="$1"
+exec proot-distro login debian -- bash -c 'set -a; [ -f "$HOME/.dsh-env" ] && source "$HOME/.dsh-env"; set +a; exec dsh --profile headless "$1"' _ "$TASK"
+EOF
+chmod +x "$HOME/start-dsh.sh" "$HOME/dsh-run.sh"
 
 echo ""
 echo "===================================================="
 echo " DSH 安装完成！"
 echo " 浏览器打开: http://127.0.0.1:3080"
-echo " 配置文件:   ~/.dsh-env（填入真实 API Key）"
+echo " 配置文件:   ~/.dsh-env（填入真实 API Key / 中转站）"
+echo " 命令行:     bash ~/dsh-run.sh \"任务描述\""
 echo "===================================================="
 echo "DSH_SETUP_DONE"
